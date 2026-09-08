@@ -1,0 +1,86 @@
+// ============================================================
+// ThreatFlow - AbuseIPDB Risk Assessment
+// Purpose:
+// Takes enriched IP intelligence returned by AbuseIPDB,
+// validates the response, assigns a risk level, and returns
+// the fields useful to a security analyst.
+// ============================================================
+
+
+// Get the AbuseIPDB response from the previous HTTP Request node.
+// AbuseIPDB stores the IP intelligence inside the "data" object.
+const intel = $json.data;
+
+
+// Validate the API response before processing it.
+// If AbuseIPDB does not return a numeric confidence score,
+// stop the workflow instead of producing an unreliable assessment.
+if (!intel || typeof intel.abuseConfidenceScore !== 'number') {
+  throw new Error(
+    'AbuseIPDB response is missing a valid abuseConfidenceScore'
+  );
+}
+
+
+// Store the confidence score so we can evaluate it.
+// AbuseIPDB scores IP addresses from 0 to 100.
+const score = intel.abuseConfidenceScore;
+
+
+// ------------------------------------------------------------
+// Risk Classification
+//
+// LOW:     0-24
+// MEDIUM: 25-74
+// HIGH:   75-100
+//
+// The 75+ threshold aligns with AbuseIPDB's guidance for
+// high-confidence abuse results. LOW and MEDIUM are our
+// workflow categories for triaging results below that threshold.
+// ------------------------------------------------------------
+
+let riskLevel;
+
+if (score >= 75) {
+  riskLevel = 'HIGH';
+} else if (score >= 25) {
+  riskLevel = 'MEDIUM';
+} else {
+  riskLevel = 'LOW';
+}
+
+
+// Return a clean analyst-friendly object.
+//
+// "??" provides a fallback value when an optional API field
+// is null or missing, preventing missing data from breaking
+// downstream nodes.
+return [
+  {
+    json: {
+      ipAddress: intel.ipAddress,
+      riskLevel: riskLevel,
+      abuseConfidenceScore: score,
+
+      // Reputation/context information
+      isWhitelisted: intel.isWhitelisted ?? null,
+      isPublic: intel.isPublic ?? null,
+      ipVersion: intel.ipVersion ?? null,
+
+      // Network ownership and geographic information
+      countryCode: intel.countryCode ?? null,
+      usageType: intel.usageType ?? null,
+      isp: intel.isp ?? null,
+      domain: intel.domain ?? null,
+
+      // Use the first hostname when AbuseIPDB returns multiple.
+      hostname: intel.hostnames?.[0] ?? null,
+
+      // Threat indicators
+      isTor: intel.isTor ?? false,
+      totalReports: intel.totalReports ?? 0,
+      numDistinctUsers: intel.numDistinctUsers ?? 0,
+      lastReportedAt: intel.lastReportedAt ?? null
+    }
+  }
+];

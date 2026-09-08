@@ -1,0 +1,276 @@
+{
+  "name": "ThreatFlow - IP Enrichment",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -208
+      ],
+      "id": "5332722e-5af8-4c69-894d-f16e5dabfdf1",
+      "name": "Start ThreatFlow"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8cfc9d25-b7e5-45a9-819b-ad3b13233ac4",
+              "name": "ip",
+              "value": "8.8.8.8",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -448,
+        112
+      ],
+      "id": "ea1ec9a8-e2b4-4969-b303-ec7fd0007ab8",
+      "name": "IOC Input"
+    },
+    {
+      "parameters": {
+        "url": "https://api.abuseipdb.com/api/v2/check",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "ipAddress",
+              "value": "={{ $json.ip }}"
+            },
+            {
+              "name": "maxAgeInDays",
+              "value": "90"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -112,
+        112
+      ],
+      "id": "d2c61407-53eb-41e0-bb0b-04ff2cc2185c",
+      "name": "AbuseIPDB Enrichment",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "XXrhEmMwg8FnaNRp",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const intel = $json.data;\n\nif (!intel || typeof intel.abuseConfidenceScore !== 'number') {\n  throw new Error('AbuseIPDB response is missing abuseConfidenceScore');\n}\n\nconst score = intel.abuseConfidenceScore;\n\nlet riskLevel;\n\nif (score >= 75) {\n  riskLevel = 'HIGH';\n} else if (score >= 25) {\n  riskLevel = 'MEDIUM';\n} else {\n  riskLevel = 'LOW';\n}\n\nreturn [\n  {\n    json: {\n      ipAddress: intel.ipAddress,\n      riskLevel,\n      abuseConfidenceScore: score,\n      isWhitelisted: intel.isWhitelisted ?? null,\n      isPublic: intel.isPublic,\n      ipVersion: intel.ipVersion,\n      countryCode: intel.countryCode ?? null,\n      usageType: intel.usageType ?? null,\n      isp: intel.isp ?? null,\n      domain: intel.domain ?? null,\n      hostname: intel.hostnames?.[0] ?? null,\n      isTor: intel.isTor ?? false,\n      totalReports: intel.totalReports ?? 0,\n      numDistinctUsers: intel.numDistinctUsers ?? 0,\n      lastReportedAt: intel.lastReportedAt ?? null\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        112
+      ],
+      "id": "634c1e10-5967-4ba1-8fb5-52471a460c70",
+      "name": "Risk Assessment"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "33b8b424-1c30-4be3-8f17-101cf002f5c2",
+              "name": "ipAddress",
+              "value": "={{ $json.ipAddress }}",
+              "type": "string"
+            },
+            {
+              "id": "90b719a2-0850-4cf3-a5ca-1b03472b95c4",
+              "name": "riskLevel",
+              "value": "={{ $json.riskLevel }}",
+              "type": "string"
+            },
+            {
+              "id": "1c0eba36-0af6-49ef-aee8-b622ea64255a",
+              "name": "abuseConfidenceScore",
+              "value": "={{ $json.abuseConfidenceScore }}",
+              "type": "string"
+            },
+            {
+              "id": "2842fb8a-7850-4931-a283-ed15395359b5",
+              "name": "isp",
+              "value": "={{ $json.isp }}",
+              "type": "string"
+            },
+            {
+              "id": "6c4d12d7-6814-4049-b878-e8f08f66e5e4",
+              "name": "countryCode",
+              "value": "={{ $json.countryCode }}",
+              "type": "string"
+            },
+            {
+              "id": "4d4a0968-4398-470e-a1c5-c710140c3cb9",
+              "name": "isTor",
+              "value": "={{ $json.isTor }}",
+              "type": "string"
+            },
+            {
+              "id": "204aef3b-d007-425c-9737-7bac745c30b3",
+              "name": "totalReports",
+              "value": "={{ $json.totalReports }}",
+              "type": "string"
+            },
+            {
+              "id": "0a25723d-637b-4d68-8da5-f6f632bb87b6",
+              "name": "report",
+              "value": "// ============================================================\n// ThreatFlow - AbuseIPDB Risk Assessment\n// Purpose:\n// Takes enriched IP intelligence returned by AbuseIPDB,\n// validates the response, assigns a risk level, and returns\n// the fields useful to a security analyst.\n// ============================================================\n\n\n// Get the AbuseIPDB response from the previous HTTP Request node.\n// AbuseIPDB stores the IP intelligence inside the \"data\" object.\nconst intel = $json.data;\n\n\n// Validate the API response before processing it.\n// If AbuseIPDB does not return a numeric confidence score,\n// stop the workflow instead of producing an unreliable assessment.\nif (!intel || typeof intel.abuseConfidenceScore !== 'number') {\n  throw new Error(\n    'AbuseIPDB response is missing a valid abuseConfidenceScore'\n  );\n}\n\n\n// Store the confidence score so we can evaluate it.\n// AbuseIPDB scores IP addresses from 0 to 100.\nconst score = intel.abuseConfidenceScore;\n\n\n// ------------------------------------------------------------\n// Risk Classification\n//\n// LOW:     0-24\n// MEDIUM: 25-74\n// HIGH:   75-100\n//\n// The 75+ threshold aligns with AbuseIPDB's guidance for\n// high-confidence abuse results. LOW and MEDIUM are our\n// workflow categories for triaging results below that threshold.\n// ------------------------------------------------------------\n\nlet riskLevel;\n\nif (score >= 75) {\n  riskLevel = 'HIGH';\n} else if (score >= 25) {\n  riskLevel = 'MEDIUM';\n} else {\n  riskLevel = 'LOW';\n}\n\n\n// Return a clean analyst-friendly object.\n//\n// \"??\" provides a fallback value when an optional API field\n// is null or missing, preventing missing data from breaking\n// downstream nodes.\nreturn [\n  {\n    json: {\n      ipAddress: intel.ipAddress,\n      riskLevel: riskLevel,\n      abuseConfidenceScore: score,\n\n      // Reputation/context information\n      isWhitelisted: intel.isWhitelisted ?? null,\n      isPublic: intel.isPublic ?? null,\n      ipVersion: intel.ipVersion ?? null,\n\n      // Network ownership and geographic information\n      countryCode: intel.countryCode ?? null,\n      usageType: intel.usageType ?? null,\n      isp: intel.isp ?? null,\n      domain: intel.domain ?? null,\n\n      // Use the first hostname when AbuseIPDB returns multiple.\n      hostname: intel.hostnames?.[0] ?? null,\n\n      // Threat indicators\n      isTor: intel.isTor ?? false,\n      totalReports: intel.totalReports ?? 0,\n      numDistinctUsers: intel.numDistinctUsers ?? 0,\n      lastReportedAt: intel.lastReportedAt ?? null\n    }\n  }\n];",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        320,
+        112
+      ],
+      "id": "7599bdd8-6c27-4961-8e9d-6aff7ff0f9b7",
+      "name": "Analyst Report"
+    },
+    {
+      "parameters": {
+        "content": "## IOC Input\n\n**Indicator submitted for threat intelligence analysis",
+        "height": 176,
+        "width": 208
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        -16
+      ],
+      "id": "e0911b9e-4ddb-457a-b43f-977be99a65fc",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## THREAT INTELLIGENCE\n**Enriches the IOC using AbuseIPDB reputation data)"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        16
+      ],
+      "id": "08985dad-2d21-4787-9385-d7f2548deb6f",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "report",
+        "options": {
+          "fileName": "ThreatFlow-IP-Report.txt"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        544,
+        112
+      ],
+      "id": "a66e25bb-1a58-4faa-91a7-967fa4d0a865",
+      "name": "Convert to File"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start ThreatFlow": {
+      "main": [
+        [
+          {
+            "node": "IOC Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IOC Input": {
+      "main": [
+        [
+          {
+            "node": "AbuseIPDB Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AbuseIPDB Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Risk Assessment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Risk Assessment": {
+      "main": [
+        [
+          {
+            "node": "Analyst Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyst Report": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "584202b5-8abf-4ad9-a562-a1a60173fdaa",
+  "meta": {
+    "instanceId": "8b6a18c20d8493afcfe1da0bd7080af05847a6fbe3562c33fff8761213802473"
+  },
+  "nodeGroups": [],
+  "id": "TJlc0luiRevJrdJ8",
+  "tags": []
+}
