@@ -1,3 +1,4 @@
+
 # threatflow-n8n
 # ThreatFlow 
 
@@ -101,6 +102,12 @@ Potential extensions include:
 - Sending alerts for high-risk indicators
 - Exporting structured JSON or HTML reports
 - Integrating the workflow with SIEM or incident-response tooling
+
+## Workflow Overview
+
+<img width="1870" height="832" alt="ThreatFlow n8n Workflow" src="https://github.com/user-attachments/assets/d0214a93-abfa-47e2-bd77-26ebe51945b6" />
+
+**IOC → AbuseIPDB → Enrichment → Risk Classification → Analyst Report → File Export**
 
 ## Disclaimer
 
